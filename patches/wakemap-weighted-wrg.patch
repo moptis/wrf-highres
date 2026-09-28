@@ -1,0 +1,248 @@
+diff --git a/wakemap_processor/create_wrg.py b/wakemap_processor/create_wrg.py
+index 88efd0b..756e135 100644
+--- a/wakemap_processor/create_wrg.py
++++ b/wakemap_processor/create_wrg.py
+@@ -14,8 +14,13 @@ logger = logging.getLogger(__name__)
+ 
+ 
+ class CreateWrg:
+-    def __init__(self, h5_file, wrg_file=None, hub_height=100, bin_size=30, resolution=None):
++    def __init__(self, h5_file, wrg_file=None, hub_height=100, bin_size=30, resolution=None,
++                 weights=None):
+         self._h5_file = h5_file
++        # Per-timestep weights, aligned with the h5 time axis.  Needed when the
++        # simulated periods are a weighted sample of the climate (see
++        # wsw_high/tmy) rather than a contiguous record.  None = unweighted.
++        self._weights = None if weights is None else np.asarray(weights, dtype=float)
+         self._wrg_file = wrg_file or h5_file.replace(".h5", ".wrg")
+         self._hub_height = self._check_hub_height(h5_file, hub_height)
+         self._bin_size = bin_size
+@@ -86,6 +91,7 @@ class CreateWrg:
+                             pixel,
+                             hub_height=self._hub_height,
+                             bin_size=self._bin_size,
++                            weights=self._weights,
+                         )
+                     )
+ 
+@@ -96,7 +102,8 @@ class CreateWrg:
+         else:
+             for i, pixel in enumerate(self._pixels):
+                 wrg_stats.append(
+-                    H5Handler.get_wrg_values(self._h5_file, pixel, hub_height=self._hub_height, bin_size=self._bin_size)
++                    H5Handler.get_wrg_values(self._h5_file, pixel, hub_height=self._hub_height,
++                                             bin_size=self._bin_size, weights=self._weights)
+                 )
+                 if not (i % 100):
+                     logger.debug(f"- Computed WRG stats for {i + 1} out of {len(self._pixels)} pixels")
+@@ -269,7 +276,7 @@ class CreateWrg:
+             logger.exception(f"Failed to create WRG file {self._wrg_file} from {self._h5_file}")
+ 
+     @classmethod
+-    def run(cls, h5_file, wrg_file=None, hub_height=100, bin_size=30, resolution=None, max_workers=None, buffer=0.2, wrg_resolution=None):
++    def run(cls, h5_file, wrg_file=None, hub_height=100, bin_size=30, resolution=None, max_workers=None, buffer=0.2, wrg_resolution=None, weights=None):
+         """
+         Create Timeseries CSVs for all pixels in h5_file
+ 
+@@ -296,6 +303,7 @@ class CreateWrg:
+             Final WRG grid resolution in meters, if None use resolution, by default None
+         """
+         print('launching')
+-        cls(h5_file, wrg_file=wrg_file, hub_height=hub_height, bin_size=bin_size, resolution=resolution).execute(
++        cls(h5_file, wrg_file=wrg_file, hub_height=hub_height, bin_size=bin_size, resolution=resolution,
++                  weights=weights).execute(
+             max_workers=max_workers, buffer=buffer, wrg_resolution=wrg_resolution
+         )
+diff --git a/wakemap_processor/h5_handler.py b/wakemap_processor/h5_handler.py
+index fbb1d41..b387581 100644
+--- a/wakemap_processor/h5_handler.py
++++ b/wakemap_processor/h5_handler.py
+@@ -13,6 +13,7 @@ from rex.utilities.exceptions import ExtrapolationWarning, MoninObukhovExtrapola
+ from rex.utilities.execution import SpawnProcessPool
+ from rex.utilities.loggers import log_mem
+ from rex.utilities.parse_keys import parse_slice
++from scipy.optimize import brentq
+ from scipy.stats import weibull_min
+ 
+ from wakemap_processor.utilities import compute_capacity_factor, compute_resolution, get_chunk_size
+@@ -35,6 +36,60 @@ from wakemap_processor.variable_attributes import (
+ logger = logging.getLogger(__name__)
+ 
+ 
++_WRG_WEIGHT = "_wrg_weight"
++
++
++def weighted_weibull_fit(x, weights=None):
++    """MLE fit of a two-parameter Weibull (location fixed at 0), optionally weighted.
++
++    With weights=None this defers to scipy so the unweighted path stays
++    bit-identical to the previous behaviour.
++
++    The weighted MLE solves, for shape k,
++        sum(w x^k ln x) / sum(w x^k)  -  1/k  -  sum(w ln x)/sum(w)  =  0
++    then scale A = ( sum(w x^k) / sum(w) )^(1/k).
++
++    Parameters
++    ----------
++    x : array-like
++        Wind speeds.
++    weights : array-like, optional
++        Per-sample weights, aligned with x.  Need not sum to 1.
++
++    Returns
++    -------
++    (k, A) : tuple of float
++    """
++    x = np.asarray(x, dtype=float)
++    if weights is None:
++        k, _, a = weibull_min.fit(x, floc=0)
++        return k, a
++
++    w = np.asarray(weights, dtype=float)
++    m = np.isfinite(x) & (x > 0) & np.isfinite(w) & (w > 0)
++    x, w = x[m], w[m]
++    if x.size < 2 or np.allclose(x, x[0]):
++        return np.nan, np.nan
++
++    W = w.sum()
++    lx = np.log(x)
++    mean_lx = (w * lx).sum() / W
++
++    def root(k):
++        xk = x ** k
++        return (w * xk * lx).sum() / (w * xk).sum() - 1.0 / k - mean_lx
++
++    try:
++        k = brentq(root, 0.1, 50.0, xtol=1e-10)
++    except ValueError:
++        # no sign change in the bracket -- fall back to the unweighted fit
++        kf, _, af = weibull_min.fit(x, floc=0)
++        return kf, af
++
++    a = ((w * x ** k).sum() / W) ** (1.0 / k)
++    return k, a
++
++
+ class H5Handler(WindResource):
+     INTERPOLABLE_DSETS = WindResource.INTERPOLABLE_DSETS + [
+         var for var, attrs in WAKEMAP_VARS.items() if HEIGHTS in attrs
+@@ -363,13 +418,18 @@ class H5Handler(WindResource):
+         -------
+         pandas.Series
+         """
+-        k, _, a = weibull_min.fit(sector[WIND_SPEED], floc=0)
+-        freq = len(sector) / total_count
++        if _WRG_WEIGHT in sector:
++            w = sector[_WRG_WEIGHT].values
++            k, a = weighted_weibull_fit(sector[WIND_SPEED].values, w)
++            freq = w.sum() / total_count
++        else:
++            k, _, a = weibull_min.fit(sector[WIND_SPEED], floc=0)
++            freq = len(sector) / total_count
+ 
+         return pd.Series({"freq": freq * 1000, "A": a * 10, "k": k * 100})
+ 
+     @staticmethod
+-    def _compute_power_density(wind_speed, rotor_radius=50):
++    def _compute_power_density(wind_speed, rotor_radius=50, weights=None):
+         """
+         Compute the power density for the given wind resource
+ 
+@@ -388,7 +448,17 @@ class H5Handler(WindResource):
+         area = np.pi * rotor_radius**2  # swept area of the wind turbine in m2
+         C_p = 0.33  # power coefficient of the wind turbine
+ 
+-        return 0.5 * rho * area * wind_speed.mean() ** 3 * C_p / 1000
++        # NOTE: this is mean(U)**3, not mean(U**3).  Power density is
++        # conventionally 0.5*rho*<U^3>, so this understates it (~48% for a k=2
++        # Weibull).  Preserved as-is so weighted and unweighted WRGs stay
++        # comparable with previously produced files; change deliberately.
++        if weights is None:
++            mean_u = wind_speed.mean()
++        else:
++            w = np.asarray(weights, dtype=float)
++            mean_u = float(np.average(np.asarray(wind_speed, dtype=float), weights=w))
++
++        return 0.5 * rho * area * mean_u ** 3 * C_p / 1000
+ 
+     def _get_variable(self, variable):
+         """
+@@ -433,7 +503,7 @@ class H5Handler(WindResource):
+         """
+         return self._get_variable(WIND_DIR)
+ 
+-    def compute_wrg_values(self, pixel_id, hub_height=100, bin_size=30):
++    def compute_wrg_values(self, pixel_id, hub_height=100, bin_size=30, weights=None):
+         """
+         Compute the wind resource gid files values
+ 
+@@ -445,6 +515,10 @@ class H5Handler(WindResource):
+             Hub height [m]
+         bin_size : int, optional
+             Size of each sector bin in degrees, by default 30
++        weights : array-like, optional
++            Per-timestep weights aligned with the h5 time axis.  Used when the
++            simulated periods are a weighted sample of the climate rather than
++            a contiguous record.  None reproduces the unweighted behaviour.
+ 
+         Returns
+         -------
+@@ -462,20 +536,35 @@ class H5Handler(WindResource):
+         # get sector angles
+         sector_angles = np.arange(-bin_size / 2, center + 1, bin_size)
+ 
++        if weights is not None:
++            weights = np.asarray(weights, dtype=float)
++            if weights.shape[0] != wspd.shape[0]:
++                raise ValueError(
++                    f"weights length {weights.shape[0]} does not match the "
++                    f"{wspd.shape[0]} timesteps in {self._h5_file}"
++                )
++
+         # Compute A and K for all sectors
+-        k, _, A = weibull_min.fit(wspd, floc=0)
++        k, A = weighted_weibull_fit(wspd, weights)
+         # Compute power density
+-        power_density = self._compute_power_density(wspd, rotor_radius=hub_height / 2)
++        power_density = self._compute_power_density(
++            wspd, rotor_radius=hub_height / 2, weights=weights
++        )
+         elevation = self.elevation[pixel_id]
+ 
+         pixel_wrg = [elevation,int(hub_height), A, k, power_density, len(sector_angles) - 1]
+ 
+         # Create dataframe to handle computation
+         df = pd.DataFrame(data={WIND_SPEED: wspd, WIND_DIR: wdir})
++        if weights is None:
++            total = len(df)
++        else:
++            df[_WRG_WEIGHT] = weights
++            total = float(weights.sum())
+         df["sector"] = pd.cut(wdir, sector_angles)
+ 
+         # Compute sector level stats and add to list
+-        pixel_wrg.extend(df.groupby("sector", observed = False).apply(self._compute_sector_stats, len(df)).stack().values)
++        pixel_wrg.extend(df.groupby("sector", observed = False).apply(self._compute_sector_stats, total).stack().values)
+ 
+         return pixel_wrg
+ 
+@@ -518,7 +607,7 @@ class H5Handler(WindResource):
+             h5.to_wakemap_csv(csv_path, pixel_id, hub_height=hub_height)
+ 
+     @classmethod
+-    def get_wrg_values(cls, h5_file, pixel_id, hub_height=100, bin_size=30):
++    def get_wrg_values(cls, h5_file, pixel_id, hub_height=100, bin_size=30, weights=None):
+         """
+         Compute the wind resource file values
+ 
+@@ -539,7 +628,9 @@ class H5Handler(WindResource):
+             WRG parameters for the given pixel_id
+         """
+         with cls(h5_file) as h5:
+-            return h5.compute_wrg_values(pixel_id, hub_height=hub_height, bin_size=bin_size)
++            return h5.compute_wrg_values(
++                pixel_id, hub_height=hub_height, bin_size=bin_size, weights=weights
++            )
+ 
+     @classmethod
+     def _compute_annual_chunk_mean(cls, h5_file, variable_name, chunk):

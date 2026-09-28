@@ -1,0 +1,109 @@
+#!/bin/bash
+# NOTE: #SBATCH directives cannot read site.env (sbatch parses them before the
+# shell runs). Set the *_PLACEHOLDER values below, or submit with explicit flags:
+#   sbatch -A $SLURM_ACCOUNT -p $PART_CPU --qos=$SLURM_QOS ...
+
+#SBATCH --output=post-%j.out
+#SBATCH --nodes=1
+#SBATCH --partition=short
+#SBATCH --ntasks=104
+#SBATCH --account=SLURM_ACCOUNT_PLACEHOLDER
+#SBATCH --time=04:00:00
+#SBATCH --qos=SLURM_QOS_PLACEHOLDER
+
+##SBATCH --mem=40G
+#SBATCH --exclusive
+
+# Set scenario
+scenario=$1
+
+# Set deliverables folder
+deliverables_folder=/scratch/moptis/c2wind/${scenario}/deliverables
+
+# Activate conda environment
+. "${WRFHR_REPO}/slurm/common.sh"
+
+# Set buffer for WRG files
+buffer=0.05
+domain=d05
+max_workers=104
+#max_workers=1
+
+# Get start and end dates (if these exist)
+start_date=$(jq -r '.startDate' /scratch/moptis/c2wind/${scenario}/inputs.json)
+end_date=$(jq -r '.endDate' /scratch/moptis/c2wind/${scenario}/inputs.json)
+#start_date="2024-04-01"
+#end_date="2025-12-31 21:10:00"
+#end_date="2025-12-01"
+echo $start_date
+echo $end_date
+
+# Set name of hdf5 file
+h5_file=/scratch/moptis/c2wind/${scenario}/processed/${scenario}.h5
+npz_dir=/scratch/moptis/c2wind/${scenario}/npz/
+mkdir -p ${npz_dir}
+echo $npz_dir
+
+prefix=wrfout_${domain}
+
+# Set wrf directory and spinup time
+wrf_dir=/scratch/moptis/c2wind/${scenario}/wrf_runs/
+spinup_time=6
+
+# Process HDF5 files
+# if start_date and end_date are null, then we have a TMY and we run processing code without those parameters
+if [ "$st_date" == "null" ] || [ "$end_date" == "null" ]; then
+  echo ""
+  wakemap_processor wrf-to-h5 --h5_file=${h5_file} --wrf_dir=${wrf_dir} --file_prefix=${prefix} --spinup_time=${spinup_time} --npz_dir=${npz_dir} --max_workers=${max_workers} --clobber
+else # We have set time period so pass the start and end parameters
+  end_date=$(date -d "$end_date -10 minutes" +"%Y-%m-%d %H:%M:%S")
+  wakemap_processor wrf-to-h5 --h5_file=${h5_file} --wrf_dir=${wrf_dir} --file_prefix=${prefix} --start_datetime="${start_date}" --end_datetime="${end_date}" --spinup_time=${spinup_time} --npz_dir=${npz_dir} --max_workers=${max_workers} --clobber
+fi
+
+# Process WRG files
+bin_size=22.5
+length=$(jq '.wrgHeights | length' /scratch/moptis/c2wind/${scenario}/inputs.json)
+echo "Number of hub heights: $length"
+for ((i=0; i<$length; i++)); do
+#for hub_height in 100; do
+    hub_height=$(jq ".wrgHeights[$i]" /scratch/moptis/c2wind/${scenario}/inputs.json)
+    hub_height=$(echo "$hub_height" | tr -cd '0-9')
+    hub_height=$((hub_height + 0))
+    echo "Processing WRG for hub height: $hub_height"
+    wrg_file=/scratch/moptis/c2wind/${scenario}/deliverables/wrg/${scenario}_${hub_height}m.wrg
+    wakemap_processor -v create-wrg --h5_file=${h5_file} --wrg_file=${wrg_file} --hub_height=${hub_height} --buffer=${buffer} --bin_size=${bin_size}
+done
+
+# Process timeseries files
+out_dir=${deliverables_folder}/timeseries/ # default
+
+# Extract timeseries data for all turbines
+lat_lon_file_turbs=${deliverables_folder}/turbine_locations.csv # need to create
+if [ -e ${lat_lon_file_turbs} ]; then
+  echo ""
+  wakemap_processor -v create-timeseries --h5_file=${h5_file} --out_dir=${out_dir} --lat_lon_file=${lat_lon_file_turbs}
+fi
+
+# VMM locations
+lat_lon_file_vmms="${deliverables_folder}/vmm_locations.csv" # need to create
+if [ -e ${lat_lon_file_vmms} ]; then
+  echo ""
+  wakemap_processor -v create-timeseries --h5_file=${h5_file} --out_dir=${out_dir} --lat_lon_file=${lat_lon_file_vmms}
+fi
+
+# Aggregate timeseries data into wind farm data and perform long-term adjustment
+if [ -e ${lat_lon_file_turbs} ]; then
+  echo ""
+  python ${WAKEMAP_REPO}/tests/test_wind_farm_extraction.py ${h5_file} ${deliverables_folder} ${lat_lon_file_turbs}
+fi
+
+# Process map of mean wind speeds and pixel dimensions for MapBox
+#python ${WAKEMAP_REPO}/launch_scripts/08_compute_map_stats_multiple_res.py ${h5_file} ${geo_file}
+
+# Produce wind speed maps
+#python ${WAKEMAP_REPO}/launch_scripts/08_compute_map_stats_single_res.py ${h5_file}
+
+# Confirm that files are processed and, if so, upload files to s3
+#python /home/ec2-user/wakemap_processing/launch_scripts/10_move_data_to_s3.py ${sim_name}
+
+

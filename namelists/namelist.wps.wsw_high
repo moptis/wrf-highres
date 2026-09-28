@@ -1,0 +1,44 @@
+&share
+ wrf_core = 'ARW',
+ max_dom = 5,
+ start_date = '$START_DATE', '$START_DATE', '$START_DATE', '$START_DATE', '$START_DATE',
+ end_date   = '$END_DATE', '$END_DATE', '$END_DATE', '$END_DATE', '$END_DATE',
+ interval_seconds = 10800,
+ io_form_geogrid = 2,
+/
+
+&geogrid
+ parent_id         =      1,      1,      2,      3,      4,
+ parent_grid_ratio =      1,      3,      3,      3,      3,
+ i_parent_start    =      1,     28,     23,     22,     26,
+ j_parent_start    =      1,     28,     23,     21,     26,
+ e_we              =     81,     82,    103,    181,    391,
+ e_sn              =     81,     82,    103,    187,    409,
+ !
+ ! NLCD 2025 30 m land cover on every domain.  All five must use the same
+ ! dataset: mixing it with MODIS 'default' would mix 40- and 21-category
+ ! land use and num_land_cat can only take one value.
+ !
+ geog_data_res = 'nlcd2025+default', 'nlcd2025+default', 'nlcd2025+default', 'nlcd2025+default', 'nlcd2025+default',
+ dx = 8100.0,
+ dy = 8100.0,
+ map_proj = 'lambert',
+ ref_lat   = 34.3631,
+ ref_lon   = -105.4018,
+ truelat1  = 35.3631,
+ truelat2  = 33.3631,
+ stand_lon = -105.4018,
+ geog_data_path = '/projects/clusterwakes/moptis/WPS_GEOG/'
+ opt_geogrid_tbl_path = '/scratch/moptis/c2wind/wsw_high/wps/geogrid'
+/
+
+&ungrib
+ out_format = 'WPS',
+ prefix = 'ERA5_SURF',
+/
+
+&metgrid
+ fg_name = 'ERA5_PRES', 'ERA5_SURF',
+ io_form_metgrid = 2,
+ opt_metgrid_tbl_path = '/scratch/moptis/c2wind/wsw_high/wps/metgrid'
+/
