@@ -17,32 +17,66 @@ machine-specific path lives in `site.env`, so porting is editing one file.
 | 40-day weighted sample from 24 yr ERA5 | built, validated out-of-sample |
 | 40 WRF runs | complete, 960 sample hours, zero CFL events |
 | Weighted WRG at 80/100/120/160 m | produced |
-| **Terrain resolution** | **BLOCKING — see below** |
+| Terrain upgraded to Copernicus GLO-30 | done |
+| **Wind field smoother than Vortex** | **OPEN — physics, not inputs** |
 
-### The one thing to fix before trusting the output
+### Where the resolution actually goes — corrected 2026-10-06
 
-The 100 m nest was run on **GMTED2010 30-arcsecond (~900 m) terrain**, because
-`geog_data_res = '...+default'` resolves to `topo_gmted2010_30s` for `HGT_M`.
-Measured against a Vortex 100 m WRG over the same box:
+Our 100 m WRF field is visibly smoother than a Vortex 100 m WRG over the same
+box. Comparing mean-speed and terrain spectra (nodata filled by nearest
+neighbour — see the warning below):
 
-| | >2 km | 0.8-2 km | 400-800 m | <400 m |
-|---|---|---|---|---|
-| terrain, Vortex | 44.6% | 9.9% | 15.1% | **30.4%** |
-| terrain, ours | 97.3% | 1.6% | 0.6% | **0.4%** |
-| wind, Vortex | 88.3% | 3.6% | 2.8% | **5.4%** |
-| wind, ours | 98.0% | 1.5% | 0.3% | **0.2%** |
+| | sd | sub-2 km variance | <400 m |
+|---|---|---|---|
+| terrain, Vortex | 71.1 | 3.2% | 0.41% |
+| terrain, ours | 75.8 | 2.9% | 0.44% |
+| **wind, Vortex** | 0.51 | **11.6%** | **5.22%** |
+| **wind, ours** | 0.48 | **2.1%** | **0.19%** |
 
-The two terrain fields correlate at 0.996 — same mountain, ours with everything
-below ~2 km erased. The wind field inherits exactly that. **The resolution was
-never the limitation; the terrain input was.** Note the asymmetry: 30 m NLCD
-land cover was fed to the same domain that got 900 m topography.
+**The terrain is not the difference — the wind is.** Vortex carries ~5x our
+sub-2 km wind variance and ~27x below 400 m, from terrain no finer than ours.
 
-Fixing it needs a high-resolution DEM (USGS 3DEP / SRTM) for the domain,
-converted to WPS binary format, a `rel_path`/`interp_option` entry added to
-`GEOGRID.TBL`, `geog_data_res` changed on d04/d05, geogrid rerun, and the 40
-blocks rerun. `topo_srtm_1_3s` exists in some WPS_GEOG trees at ~10 m but the
-copy used here covered Oklahoma, not the site — check extent before assuming.
-Also consider reducing `smooth_passes` on the fine nests.
+The leading suspect is the physics, not the inputs: **MYNN at 100 m sits in the
+turbulence grey zone and over-mixes**, which smooths exactly these scales.
+`diff_opt=2` / `km_opt=4` numerical diffusion and the vertical grid are the
+other candidates. An LES configuration on d04/d05 is the obvious experiment,
+and was flagged as an open question when the physics was first set up.
+
+**A retracted claim.** An earlier version of this file said the cause was
+terrain resolution — that our 100 m nest ran on ~900 m GMTED while Vortex had
+something far finer, citing "55.4% vs 2.7%" sub-km terrain variance. That was
+an artifact: 267 nodata cells in the Vortex WRG sit at elevation 0 amid ~1900 m
+terrain, and the spectrum code filled only non-finite values, so those 1900 m
+delta functions survived and dominated the high-wavenumber bands. The 0.996
+correlation between the two terrain fields should have been treated as
+contradicting the spectra, and was not.
+
+The terrain was nonetheless upgraded to Copernicus GLO-30 (see below) and that
+is worth keeping — 30 m source is the correct input for a 100 m grid and p99
+gradients went 90.8 -> 244.5 m/km — but it does **not** close the wind gap.
+
+### Terrain: Copernicus GLO-30 (done)
+
+`/projects/aiweather/WPS_GEOG` now holds the full geog tree plus
+`topo_cop30_1s_r{0-2}c{0-4}` — Copernicus GLO-30 at 1 arcsec over CONUS and
+Canada, 32,504 tiles, 89 GB, registered as resolution `cop30` in `GEOGRID.TBL`
+at priorities above the GMTED 30 s fallback. Set with
+`geog_data_res = 'cop30+nlcd2025+default'`.
+
+Three things that bite when building it, all handled in
+`tools/make_wps_topo.py`:
+
+- Copernicus reduces longitudinal sampling with latitude (3600 columns below
+  50N, then 2400/1800/1200/720). WPS needs uniform `regular_ll`, so everything
+  is resampled through a uniform 1-arcsec VRT first.
+- WPS tile filenames carry 5-digit cell indices, capping a dataset at 99999
+  cells per side. North America at 1 arcsec is 327600 x 216000, hence 15
+  pieces — the same reason NLCD2025 ships as 16.
+- Tile files include the halo: `(tile+2*bdr)^2` values, verified against the
+  shipped GMTED tiles.
+
+Verified: geogrid output matches the raw mosaic sampled at the same grid points
+to 1.18 m rms, so no detail is lost in conversion.
 
 ---
 

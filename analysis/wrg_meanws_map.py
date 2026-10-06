@@ -52,6 +52,7 @@ def read_wrg(path):
                 continue
             if zi == 0.0 and Ai == 1.0 and ki == 1.5:
                 Ai = ki = pi = np.nan
+                zi = np.nan        # 0 m is the nodata marker, not sea level
             x.append(xi); y.append(yi); z.append(zi)
             A.append(Ai); k.append(ki); pd_.append(pi)
     return (dict(nx=nx, ny=ny, x0=x0, y0=y0, res=res),

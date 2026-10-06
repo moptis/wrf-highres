@@ -47,7 +47,17 @@ print(f"\ncommon points: {m.sum()} of {VU.size}")
 
 
 def spectrum(F, label):
-    F = np.where(np.isfinite(F), F, np.nanmean(F))
+    # Fill gaps by NEAREST NEIGHBOUR, not with the mean.  Mean-substitution puts
+    # a step the size of the field's offset at every gap, which is broadband in
+    # a spectrum -- 267 nodata cells at 0 m amid 1900 m terrain once produced a
+    # spurious "55% of variance below 2 km" and a wrong conclusion.
+    # Callers must pass sentinels (0 m elevation here) as NaN: 0.0 is finite and
+    # would otherwise survive any isfinite-based fill.
+    m = ~np.isfinite(F)
+    if m.any():
+        from scipy.ndimage import distance_transform_edt
+        _, (i, j) = distance_transform_edt(m, return_indices=True)
+        F = F[i, j]
     A = np.abs(np.fft.fftshift(np.fft.fft2(F - F.mean()))) ** 2
     ny, nx = F.shape
     yy, xx = np.mgrid[:ny, :nx]
