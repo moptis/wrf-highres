@@ -1,0 +1,150 @@
+# Paste these blocks into GEOGRID.TBL *above* the existing priority-1
+# HGT_M block (which stays as the global GMTED 30s fallback), then set
+#   geog_data_res = 'cop30+...'
+# WARNING: without these entries geogrid does NOT error -- it silently
+# falls back to 900 m GMTED terrain.
+
+# ---------------------------------------------------------------------
+# Copernicus GLO-30 1-arcsec topography, added as resolution 'cop30'.
+# Select with geog_data_res = 'cop30+...' on the fine domains.
+# Split into 15 pieces because WPS tile filenames carry 5-digit cell
+# indices, so no dataset may exceed 99999 cells per side; North America
+# at 1 arcsec is 327600 x 216000.  Higher priority is applied first, so
+# priority 1 below stays the global GMTED 30s fallback for ocean gaps
+# and anywhere outside North America.
+# ---------------------------------------------------------------------
+===============================
+name = HGT_M
+        priority = 2
+        optional = yes
+        dest_type = continuous
+        smooth_option = smth-desmth_special; smooth_passes=1
+        fill_missing=0.
+        interp_option = cop30:average_gcell(4.0)+four_pt+average_4pt
+        rel_path = cop30:topo_cop30_1s_r0c0/
+===============================
+name = HGT_M
+        priority = 3
+        optional = yes
+        dest_type = continuous
+        smooth_option = smth-desmth_special; smooth_passes=1
+        fill_missing=0.
+        interp_option = cop30:average_gcell(4.0)+four_pt+average_4pt
+        rel_path = cop30:topo_cop30_1s_r0c1/
+===============================
+name = HGT_M
+        priority = 4
+        optional = yes
+        dest_type = continuous
+        smooth_option = smth-desmth_special; smooth_passes=1
+        fill_missing=0.
+        interp_option = cop30:average_gcell(4.0)+four_pt+average_4pt
+        rel_path = cop30:topo_cop30_1s_r0c2/
+===============================
+name = HGT_M
+        priority = 5
+        optional = yes
+        dest_type = continuous
+        smooth_option = smth-desmth_special; smooth_passes=1
+        fill_missing=0.
+        interp_option = cop30:average_gcell(4.0)+four_pt+average_4pt
+        rel_path = cop30:topo_cop30_1s_r0c3/
+===============================
+name = HGT_M
+        priority = 6
+        optional = yes
+        dest_type = continuous
+        smooth_option = smth-desmth_special; smooth_passes=1
+        fill_missing=0.
+        interp_option = cop30:average_gcell(4.0)+four_pt+average_4pt
+        rel_path = cop30:topo_cop30_1s_r0c4/
+===============================
+name = HGT_M
+        priority = 7
+        optional = yes
+        dest_type = continuous
+        smooth_option = smth-desmth_special; smooth_passes=1
+        fill_missing=0.
+        interp_option = cop30:average_gcell(4.0)+four_pt+average_4pt
+        rel_path = cop30:topo_cop30_1s_r1c0/
+===============================
+name = HGT_M
+        priority = 8
+        optional = yes
+        dest_type = continuous
+        smooth_option = smth-desmth_special; smooth_passes=1
+        fill_missing=0.
+        interp_option = cop30:average_gcell(4.0)+four_pt+average_4pt
+        rel_path = cop30:topo_cop30_1s_r1c1/
+===============================
+name = HGT_M
+        priority = 9
+        optional = yes
+        dest_type = continuous
+        smooth_option = smth-desmth_special; smooth_passes=1
+        fill_missing=0.
+        interp_option = cop30:average_gcell(4.0)+four_pt+average_4pt
+        rel_path = cop30:topo_cop30_1s_r1c2/
+===============================
+name = HGT_M
+        priority = 10
+        optional = yes
+        dest_type = continuous
+        smooth_option = smth-desmth_special; smooth_passes=1
+        fill_missing=0.
+        interp_option = cop30:average_gcell(4.0)+four_pt+average_4pt
+        rel_path = cop30:topo_cop30_1s_r1c3/
+===============================
+name = HGT_M
+        priority = 11
+        optional = yes
+        dest_type = continuous
+        smooth_option = smth-desmth_special; smooth_passes=1
+        fill_missing=0.
+        interp_option = cop30:average_gcell(4.0)+four_pt+average_4pt
+        rel_path = cop30:topo_cop30_1s_r1c4/
+===============================
+name = HGT_M
+        priority = 12
+        optional = yes
+        dest_type = continuous
+        smooth_option = smth-desmth_special; smooth_passes=1
+        fill_missing=0.
+        interp_option = cop30:average_gcell(4.0)+four_pt+average_4pt
+        rel_path = cop30:topo_cop30_1s_r2c0/
+===============================
+name = HGT_M
+        priority = 13
+        optional = yes
+        dest_type = continuous
+        smooth_option = smth-desmth_special; smooth_passes=1
+        fill_missing=0.
+        interp_option = cop30:average_gcell(4.0)+four_pt+average_4pt
+        rel_path = cop30:topo_cop30_1s_r2c1/
+===============================
+name = HGT_M
+        priority = 14
+        optional = yes
+        dest_type = continuous
+        smooth_option = smth-desmth_special; smooth_passes=1
+        fill_missing=0.
+        interp_option = cop30:average_gcell(4.0)+four_pt+average_4pt
+        rel_path = cop30:topo_cop30_1s_r2c2/
+===============================
+name = HGT_M
+        priority = 15
+        optional = yes
+        dest_type = continuous
+        smooth_option = smth-desmth_special; smooth_passes=1
+        fill_missing=0.
+        interp_option = cop30:average_gcell(4.0)+four_pt+average_4pt
+        rel_path = cop30:topo_cop30_1s_r2c3/
+===============================
+name = HGT_M
+        priority = 16
+        optional = yes
+        dest_type = continuous
+        smooth_option = smth-desmth_special; smooth_passes=1
+        fill_missing=0.
+        interp_option = cop30:average_gcell(4.0)+four_pt+average_4pt
+        rel_path = cop30:topo_cop30_1s_r2c4/
