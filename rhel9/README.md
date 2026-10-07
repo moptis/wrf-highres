@@ -64,13 +64,48 @@ terrain `max|rh9-rh8| = 0.0000 m`, `LU_INDEX` bitwise identical.
 `wrf.exe`: 1126 steps over 5 domains, 0 errors, per-domain adaptive dt matching
 rh8 (d05 median 0.76-0.90 against its 1 s cap).
 
-## CAVEAT: 4.8.0 is not 4.6.x
+## VERIFIED: 4.8.0 removed MYNN scale-awareness entirely
 
-The static fields validate exactly, but the **physics is a different vintage**.
-`bl_mynn_mixlength = 2` was chosen by reading the MYNN source in our own 4.6
-tree; it was verified to *exist* and run under 4.8.0, NOT to be the same
-scheme. If v2 must be strictly comparable to v1, rebuild our own tree on rh9
-rather than using this module.
+The static fields validate exactly, but the physics is a different vintage and
+the difference is material. Source is shipped under `build/WRFV4.8.0`, so this
+was checked directly rather than assumed.
+
+In 4.6.x the mixing-length cases applied the Honnert/Ito grey-zone factor
+`Psig_bl`; in 4.8.0 **none of them do**:
+
+| `bl_mynn_mixlength` | 4.6.x applies Psig_bl | 4.8.0 applies Psig_bl |
+|---|---|---|
+| 0 | no  | no |
+| 1 | yes | **no** |
+| 2 | yes | **no** |
+
+`SCALE_AWARE` still exists in 4.8.0 and still computes `Psig_bl`
+(module_bl_mynnedmf.F:8304-8356), but no case consumes it. The two closing
+lines of 4.6.x CASE 2 are simply gone:
+
+    el_les = MIN(els/(1. + (els/12.)), elb_mf)
+    el(k)  = el(k)*Psig_bl + (1.-Psig_bl)*el_les
+
+**This was the whole reason option 2 was chosen.** At dx=100 m with a 1 km PBL
+`Psig_bl` is 0.65, and 0.30 for a 3 km PBL -- under 4.8.0 option 2 applies the
+full mesoscale mixing length with no taper.
+
+Other real CASE 2 changes 4.6.x -> 4.8.0: `alp3` 2.0 -> 2.5 (buoyancy
+enhancement of elb, +25%), and the PBLH floor 300 m -> 200 m (matters at this
+site, which is 35% stable + 9% very stable). Renames (`zi`->`pblh`, literals
+to `_kind_phys` named constants) are cosmetic.
+
+### What this means for the v1 -> v2 comparison
+
+Partly self-cancelling: v1 ran 4.6.x with `mixlength = 0`, which never applied
+`Psig_bl` either. So **both v1 and v2 lack scale-awareness**, and the
+comparison is not contaminated by that axis. What still differs beyond terrain
+is the rest of CASE 2 -- the eddy-turnover `tau_cloud` length in place of the
+`q/N` buoyancy length, and the different alp constants.
+
+For a clean isolation of the terrain upgrade, v2 should run `mixlength = 0`
+to match v1. To actually test grey-zone mixing, our own 4.6 tree has to be
+rebuilt on rh9 -- the prebuilt 4.8.0 cannot do it at any setting.
 
 Also: this build is made for PnetCDF (`io_form_history = 11`) and warns that
 `io_form=13` is broken. We stayed on `io_form_history = 2` to keep v2 output
