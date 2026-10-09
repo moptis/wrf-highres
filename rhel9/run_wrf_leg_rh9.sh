@@ -60,6 +60,11 @@ for line in open(p).read().splitlines():
     elif s.startswith("start_day"):    out.append(f" start_day                           = {five(dy)}")
     elif s.startswith("start_hour"):   out.append(f" start_hour                          = {five(hh)}")
     elif s.startswith("start_minute"): out.append(f" start_minute                        = {five(mi)}")
+    # Restart dumps do NOT land on round times under adaptive dt -- LGW writes
+    # them at e.g. 19:00:49 -- and WRF builds the wrfrst filename from the
+    # namelist start time.  Omitting start_second makes it look for ..._19:00:00
+    # and abort with "error opening wrfrst_d01_... for reading".
+    elif s.startswith("start_second"): out.append(f" start_second                        = {five(ss)}")
     else: out.append(line)
 open(p, "w").write("\n".join(out) + "\n")
 PY

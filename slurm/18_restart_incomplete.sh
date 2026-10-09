@@ -26,13 +26,13 @@ for RUN in "${blocks[@]}"; do
             ls $d/wrfrst_d0${dom}_* 2>/dev/null | sed "s|.*wrfrst_d0${dom}_||; s|_[0-9]*$||" | sort -u
         done | sort | uniq -c | awk '$1==5 {print $2}' | sort | tail -1)
     [ -z "$t" ] && { echo "SKIP $RUN (no complete restart set)"; continue; }
-    y=${t:0:4}; mo=${t:5:2}; dy=${t:8:2}; hh=${t:11:2}; mi=${t:14:2}
+    y=${t:0:4}; mo=${t:5:2}; dy=${t:8:2}; hh=${t:11:2}; mi=${t:14:2}; ss=${t:17:2}
     echo "$RUN: resume from $t  ($(ls $d/wrfout_d05_* 2>/dev/null | wc -l)/30 frames done)"
     [ -n "$DRY" ] && continue
 
-    python3 - "$d/namelist.input.wrf" "$y" "$mo" "$dy" "$hh" "$mi" <<'PY'
+    python3 - "$d/namelist.input.wrf" "$y" "$mo" "$dy" "$hh" "$mi" "$ss" <<'PY'
 import sys
-p, y, mo, dy, hh, mi = sys.argv[1:7]
+p, y, mo, dy, hh, mi, ss = sys.argv[1:8]
 five = lambda v: ", ".join([str(v)] * 5)
 out = []
 for line in open(p).read().splitlines():
@@ -43,6 +43,10 @@ for line in open(p).read().splitlines():
     elif t.startswith("start_day"):     out.append(f" start_day                           = {five(dy)}")
     elif t.startswith("start_hour"):    out.append(f" start_hour                          = {five(hh)}")
     elif t.startswith("start_minute"):  out.append(f" start_minute                        = {five(mi)}")
+    # Under adaptive dt a restart dump need not land on a round second, and WRF
+    # builds the wrfrst filename from the namelist start time -- so start_second
+    # must be carried across too, or it aborts "error opening wrfrst_d01_...".
+    elif t.startswith("start_second"):  out.append(f" start_second                        = {five(ss)}")
     else: out.append(line)
 open(p, "w").write("\n".join(out) + "\n")
 PY

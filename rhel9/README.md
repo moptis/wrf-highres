@@ -166,3 +166,23 @@ so it is the restart itself.  Mechanism still unknown.
 `run_wrf_leg_rh9.sh` therefore chooses: cold redoes `T_total` at 1x while
 resuming does `T_remaining` at ~6x, so cold wins whenever
 `T_remaining > T_total / 6` -- 5 model-hours for a 30 h block.
+
+**Confirmed at a second site.** Logans Gap, same controlled protocol (same
+block, early dump, clean directory): cold 0.254 s/step vs restarted 1.485,
+a **5.8x** penalty against WSW's 6.3x -- flat across the run.  Different
+terrain, domain size and timestep, same penalty, so it is a property of the
+WRF 4.8.0 restart path rather than anything site-specific.
+
+### Restart dumps do not land on round seconds
+
+Under adaptive dt, `step_to_output_time` lands history files exactly but
+restart writes overshoot:
+
+    rst:   2001-04-16_19:00:49   20:00:13   21:00:00
+    hist:  2001-04-16_19:00:00   20:00:00   21:00:00
+
+WRF builds the `wrfrst` filename from the namelist start time, so a resume
+script MUST carry `start_second` across as well as the minute, or it aborts
+with `error opening wrfrst_d01_..._19:00:00 for reading`.  WSW never hit this
+because its 3-hourly restarts coincided with history output times; LGW's
+hourly ones do not.
