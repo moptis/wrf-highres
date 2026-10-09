@@ -110,3 +110,59 @@ rebuilt on rh9 -- the prebuilt 4.8.0 cannot do it at any setting.
 Also: this build is made for PnetCDF (`io_form_history = 11`) and warns that
 `io_form=13` is broken. We stayed on `io_form_history = 2` to keep v2 output
 consistent with v1 and the existing post-processing.
+
+## The rh9 metgrid binary is ALSO broken
+
+The WPS 4.6.0 `metgrid.exe` in this install writes met_em files containing
+nothing but an empty `Times` variable -- **15,457 bytes for every domain**,
+d01 and d05 alike -- and still prints "Successful completion of metgrid".
+real.exe then fails with the misleading
+
+    ---- ERROR: Could not find matching time in input file met_em.d01....
+
+Same block, same namelist.wps, same METGRID.TBL, same geo_em, same ERA5 input:
+
+| binary | d01 | d05 |
+|---|---|---|
+| rh9 WPS 4.6.0 | 15,457 B | 15,457 B |
+| rh8 WPS 4.6.0 | 6,307,675 B | 23,781,781 B |
+
+**Run metgrid on RHEL8.** met_em is netCDF and OS-portable -- rh9's real.exe
+reads rh8-made met_em without complaint. Mechanism unconfirmed; the likeliest
+suspect is the PnetCDF-linked I/O layer, since this build's own README warns
+that `io_form=13` is broken on the WRF side. Testing `io_form_metgrid = 11`
+on one block would confirm it.
+
+When checking whether metgrid succeeded, test **file size, not file count** --
+the broken run still produces the full 55 files per block.
+
+## Vertical CFL: give the adaptive scheme somewhere to go
+
+A nest's step is `parent_dt / n` with `n = ceil(parent_dt / own_dt)`, and
+`own_dt` is floored by `min_time_step`, which is in **whole seconds**.  If the
+parent sits on a round cap (d04 pinned at 3.0 s) and d05's floor is 1 s, then
+n <= 3 and **d05 cannot go below 1.0 s however high the CFL climbs**.
+`target_cfl` has nothing left to give and `w_damping` may not save it.
+
+LGW b029 blew up exactly this way: `W: NaN, w-cfl 4.63, 3164 points exceeded
+v_cfl = 2`.  Four of 64 ranks died; the surviving 60 spun in
+`futex_wait_queue` for 8 hours while Slurm still reported RUNNING.
+
+    min_time_step_den = 1, 1, 1, 2, 4     ! d04 floor 0.5 s, d05 floor 0.25 s
+
+Note for monitoring: a partial rank death is invisible if you only grep rank
+0's log.  Count live ranks, or check that rsl.error.0000 is still being
+written to.
+
+## Restarting costs 4.5-6x, so do not restart by reflex
+
+Measured on wsw_high_v2: the same blocks on the same nodes went from 0.77 to
+3.45 s/step after a restart, flat from the first step.  Ruled out: hardware,
+node, memory tier, NUMA placement, CPU binding, `--overlap`, clock speed,
+denormals, weather and directory file count.  A controlled test -- same block,
+same model hour, clean directory -- gave 0.51 s/step cold vs 3.23 restarted,
+so it is the restart itself.  Mechanism still unknown.
+
+`run_wrf_leg_rh9.sh` therefore chooses: cold redoes `T_total` at 1x while
+resuming does `T_remaining` at ~6x, so cold wins whenever
+`T_remaining > T_total / 6` -- 5 model-hours for a 30 h block.
