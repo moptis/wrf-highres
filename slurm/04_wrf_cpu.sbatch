@@ -10,7 +10,7 @@
 #SBATCH --partition=PART_CPU_PLACEHOLDER
 #SBATCH --qos=SLURM_QOS_PLACEHOLDER
 #SBATCH --exclusive
-#SBATCH --time=40:00:00
+#SBATCH --time=48:00:00
 
 . "$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/common.sh"
 

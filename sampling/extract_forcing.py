@@ -19,7 +19,10 @@ from wps_reader import read_fields, point_index
 
 MET = cfg["MET_DIR"]
 OUT = path("CASE_ROOT", "tmy", "era5_forcing_3h.csv")
-SITE_LAT, SITE_LON = 34.5, -105.5        # same ERA5 cell as era5.csv, for consistency
+# Site cell for the forcing extraction.  Must match the ERA5 cell era5.csv was
+# drawn from, or the stability state and the hub wind describe different places.
+SITE_LAT = float(cfg.get("SITE_LAT", 34.5))
+SITE_LON = float(cfg.get("SITE_LON", -105.5))
 WANT = {"SKINTEMP", "TT", "UU", "VV", "PSFC", "SNOW"}
 _IDX = None
 

@@ -13,7 +13,7 @@ ROOT = cfg["CASE_ROOT"]
 import sys
 import numpy as np
 sys.path.insert(0, path("CASE_ROOT", "tmy"))
-from sampler3 import load, bins, stack, build_blocks, design, select
+from sampler import load, bins, stack, build_blocks, design, select
 from eval3 import hists, ref_hists, metrics, HDR, show
 
 if __name__ == "__main__":

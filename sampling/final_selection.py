@@ -5,10 +5,10 @@ from wrfhr import cfg, path
 
 ROOT = cfg["CASE_ROOT"]
 
-import sys
 import numpy as np, pandas as pd
-sys.path.insert(0, path("CASE_ROOT", "tmy"))
-from sampler3 import load, bins, stack, build_blocks, design, select
+# sampler/eval3 live beside this file in the repo, not in the case directory.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from sampler import load, bins, stack, build_blocks, design, select
 from eval3 import hists, ref_hists, metrics
 
 L, K = 1, 40

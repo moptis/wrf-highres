@@ -224,11 +224,19 @@ def write_namelist_wps(d, path):
  e_we              = {_f(d['e_we'], "{:6d}")},
  e_sn              = {_f(d['e_sn'], "{:6d}")},
  !
- ! NLCD 2025 30 m land cover on every domain.  All five must use the same
- ! dataset: mixing it with MODIS 'default' would mix 40- and 21-category
- ! land use and num_land_cat can only take one value.
+ ! 30 m terrain (Copernicus GLO-30, 'cop30') AND 30 m land cover (NLCD 2025)
+ ! on every domain.  'default' stays last as the fallback for every other
+ ! field and for anywhere the 30 m data does not reach.
  !
- geog_data_res = {_f(["'nlcd2025+default'"] * 5)},
+ ! All five domains must use the same land-cover dataset: mixing NLCD with
+ ! MODIS 'default' would mix 40- and 21-category land use, and num_land_cat
+ ! takes only one value.
+ !
+ ! NOTE: if GEOGRID.TBL lacks the cop30/nlcd2025 entries, geogrid does NOT
+ ! error -- it silently falls back to 900 m GMTED terrain and MODIS land use.
+ ! See tools/GEOGRID.TBL.cop30-fragment.
+ !
+ geog_data_res = {_f(["'cop30+nlcd2025+default'"] * 5)},
  dx = {DX[0]},
  dy = {DX[0]},
  map_proj = 'lambert',

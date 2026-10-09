@@ -8,7 +8,7 @@ ROOT = cfg["CASE_ROOT"]
 import sys, time
 import numpy as np, pandas as pd
 sys.path.insert(0, path("CASE_ROOT", "tmy"))
-from sampler3 import (load, bins, featurise, stack, build_blocks, design, select)
+from sampler import (load, bins, featurise, stack, build_blocks, design, select)
 from eval3 import hists, ref_hists, metrics, HDR, show
 
 SPINUP = 0.25

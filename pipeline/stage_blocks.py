@@ -19,7 +19,7 @@ MET = cfg["MET_DIR"]
 WRF = cfg["WRF_RUN_DIR"]
 
 
-def stage(row, n, spinup, tstep=72, ratios="1, 3, 3, 3, 2"):
+def stage(row, n, spinup):
     start = row.start - pd.Timedelta(hours=spinup)
     start = start.floor("3h")                      # ERA5 cadence
     end = row.start + pd.Timedelta(days=int(row.days))
@@ -54,24 +54,6 @@ def stage(row, n, spinup, tstep=72, ratios="1, 3, 3, 3, 2"):
                  ("dend", f"{end.day:02d}"), ("hend", f"{end.hour:02d}"),
                  ("miend", "00")):
         nml = nml.replace(k, str(v))
-    out = []
-    for line in nml.splitlines():
-        s = line.strip()
-        if s.startswith("time_step "):
-            out += [f" time_step                           = {tstep},",
-                    " reasonable_time_step_ratio          = 24.0,"]
-        elif s.startswith("use_adaptive_time_step"):
-            out.append(" use_adaptive_time_step              = .false.,")
-        elif s.startswith("parent_time_step_ratio"):
-            out.append(f" parent_time_step_ratio              = {ratios},")
-        else:
-            out.append(line)
-    nml = "\n".join(out) + "\n"
-    # The pipeline's convention: real.exe ends on the hour, wrf.exe ends 10 min
-    # earlier.  Keeping it means 03_real.sbatch / 04_wrf_cpu.sbatch work
-    # unmodified -- they do `ln -sf namelist.input.real namelist.input`, which
-    # would otherwise replace a lone namelist.input with a dangling symlink.
-    # It also yields exactly 24 hourly d05 frames per sampled day rather than 25.
     open(f"{d}/namelist.input.real", "w").write(nml)
     wrf_end = end - pd.Timedelta(minutes=10)
     nml_w = nml.replace(f" end_hour                            = {end.hour:02d},"

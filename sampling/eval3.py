@@ -8,7 +8,7 @@ ROOT = cfg["CASE_ROOT"]
 import sys, time
 import numpy as np, pandas as pd
 sys.path.insert(0, path("CASE_ROOT", "tmy"))
-from sampler3 import (load, bins, featurise, normalise, stack, build_blocks,
+from sampler import (load, bins, featurise, normalise, stack, build_blocks,
                       design, select, NSECT, NSPD, NSTAB, PC_U, PC_P)
 
 TV = lambda p, q: 50.0 * np.abs(p - q).sum()      # total variation, in %
