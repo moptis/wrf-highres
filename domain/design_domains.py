@@ -22,17 +22,22 @@ ROOT = cfg["CASE_ROOT"]
 WPS_ROOT = f"{ROOT}/wps"
 
 # ---------------------------------------------------------------- WRG target
-WRG_EPSG = 32613          # UTM 13N, confirmed against the existing 1 km WRG
-WRG_NX, WRG_NY = 326, 341
-WRG_X0, WRG_Y0 = 446805.0, 3785491.0
-WRG_RES = 100.0
+# Target rectangle d05 must cover.  Defaults are the wsw_high WRG box (UTM 13N,
+# confirmed against the existing 1 km WRG); override per site with TARGET_*
+# environment variables, e.g. for azw (UTM 16N, masts + the 65 project turbines).
+WRG_EPSG = int(os.environ.get("TARGET_EPSG", 32613))
+WRG_NX = int(os.environ.get("TARGET_NX", 326))
+WRG_NY = int(os.environ.get("TARGET_NY", 341))
+WRG_X0 = float(os.environ.get("TARGET_X0", 446805.0))
+WRG_Y0 = float(os.environ.get("TARGET_Y0", 3785491.0))
+WRG_RES = float(os.environ.get("TARGET_RES", 100.0))
 
 # ------------------------------------------------------------- nest settings
 RATIO = 3
 DX = [8100.0, 2700.0, 900.0, 300.0, 100.0]
 
 # Extra margin (m, each side) around the WRG box on d05, for nest spin-up.
-D05_MARGIN = 3000.0
+D05_MARGIN = float(os.environ.get("D05_MARGIN", 3000.0))
 
 # Minimum number of PARENT cells between a nest edge and its parent's edge.
 # Index i is for domain i+2 sitting inside domain i+1.

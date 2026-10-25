@@ -18,8 +18,18 @@ g() { grep -E "^ *$1 " namelist.input | head -1 | sed 's/.*= *//' | cut -d, -f1 
 # Values are already zero-padded in the namelist, so concatenate as strings --
 # printf "%02d" would abort on "08"/"09" as an invalid octal number.
 END="$(g end_year)-$(g end_month)-$(g end_day)_$(g end_hour):$(g end_minute):00"
-if [ -f "wrfout_d05_${END}" ]; then
-  echo "$(basename $d): already complete through ${END}"; exit 0
+
+# Adaptive dt does NOT land history writes on round seconds: wsw_high_v2/b032
+# wrote its final frame as ..._23:00:01, so an exact -f test on ..._23:00:00
+# missed it, declared the finished block incomplete and cold-restarted all 29 h
+# of it.  Match any second within the end minute, and require a plausible size
+# so a frame still being written does not count as done.
+_done=""
+for _c in wrfout_d05_${END%:*}:[0-5][0-9]; do
+  [ -f "$_c" ] && [ "$(stat -c %s "$_c" 2>/dev/null || echo 0)" -gt 1000000 ] && _done="$_c"
+done
+if [ -n "$_done" ]; then
+  echo "$(basename $d): already complete -- final frame ${_done#wrfout_d05_}"; exit 0
 fi
 
 # Latest restart time written for ALL five domains (a partial set is unusable).
@@ -31,7 +41,7 @@ t=$(for dom in 1 2 3 4 5; do
 # for the same blocks, same nodes, same binary).  So resuming is only worth it
 # when little work remains.  Cold redoes T_total at 1x; resuming does
 # T_remaining at ~6x, so cold wins whenever T_remaining > T_total/6.
-if [ -n "$t" ]; then
+if [ -n "$t" ] && [ -f namelist.input.fresh ]; then
   _secs() { date -u -d "$(echo $1 | sed 's/_/ /')" +%s 2>/dev/null; }
   _start=$(grep -E "^ *start_" namelist.input.fresh | sed 's/.*= *//' | cut -d, -f1 | tr -d ' ' | paste -sd' ' - | awk '{printf "%s-%s-%s_%s:%s:00",$1,$2,$3,$4,$5}')
   _tot=$(( ($(_secs "$END") - $(_secs "$_start")) ))
@@ -49,7 +59,7 @@ if [ -n "$t" ]; then
   python3 - namelist.input "$t" <<'PY'
 import sys
 p, t = sys.argv[1], sys.argv[2]
-y, mo, dy, hh, mi = t[0:4], t[5:7], t[8:10], t[11:13], t[14:16]
+y, mo, dy, hh, mi, ss = t[0:4], t[5:7], t[8:10], t[11:13], t[14:16], t[17:19]
 five = lambda v: ", ".join([v] * 5)
 out = []
 for line in open(p).read().splitlines():
